@@ -556,7 +556,7 @@ class SimWorld:
 
         query = self.space.point_query_nearest(
             (probe_x, probe_y), ROBOT_RADIUS * 0.5,
-            pymunk.ShapeFilter(mask=CAT_WALL | CAT_OBJECT | CAT_CURTAIN)
+            pymunk.ShapeFilter(mask=CAT_WALL | CAT_OBJECT)
         )
         return query is not None and query.distance < 0.01
 
