@@ -204,6 +204,8 @@ class PygameRenderer:
 
     def _draw_ball(self):
         """Draw the ball if it's in the world."""
+        if self.world.ball_body is None:
+            raise ValueError("Ball body not initialized")
         if self.world._ball_picked or self.world._ball_in_bin:
             return
 

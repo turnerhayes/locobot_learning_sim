@@ -24,7 +24,8 @@ import math
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
-from typing import Optional, Dict, Any, Tuple, Set, List
+from typing import Optional, Tuple, Set, List, cast
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from .world import SimWorld, WorldConfig, NoveltyType
 
@@ -462,7 +463,9 @@ class RecycleBotSimEnv(gym.Env):
 
         # Ball
         if not self.world._ball_picked and not self.world._ball_in_bin:
-            bp = tuple(self.world.ball_body.position)
+            if self.world.ball_body is None:
+                raise ValueError("Ball body not initialized")
+            bp = (self.world.ball_body.position[0], self.world.ball_body.position[1])
             ball_circle = Circle(bp, BALL_RADIUS, fc="orange", ec="darkorange")
             ax.add_patch(ball_circle)
 
@@ -506,7 +509,8 @@ class RecycleBotSimEnv(gym.Env):
         ax.grid(True, alpha=0.3)
 
         fig.canvas.draw()
-        buf = fig.canvas.buffer_rgba()
+        canvas = cast(FigureCanvasAgg, fig.canvas)
+        buf = canvas.buffer_rgba()
         data = np.asarray(buf)[:, :, :3].copy()  # RGBA -> RGB
         plt.close(fig)
         return data

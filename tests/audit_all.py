@@ -3,8 +3,11 @@ Comprehensive audit of observation space, action space, reward function, and all
 Traces every value with concrete numbers to catch bugs.
 """
 
+from typing import cast
 import sys, os, math
+from gymnasium import spaces
 import numpy as np
+from pymunk import Body
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from sim.world import SimWorld, WorldConfig, NoveltyType, ROBOT_RADIUS, BALL_RADIUS
@@ -143,7 +146,8 @@ def audit_action_space():
 
     # Primitive only
     env1 = RecycleBotSimEnv(target_predicates=set())
-    check(env1.action_space.n == 3, f"Primitive-only should have 3 actions, got {env1.action_space.n}")
+    action_space = cast(spaces.Discrete, env1.action_space)
+    check(action_space.n == 3, f"Primitive-only should have 3 actions, got {action_space.n}")
     check(env1.action_list[0]["name"] == "move_forward", f"Action 0 should be move_forward")
     check(env1.action_list[1]["name"] == "turn_left", f"Action 1 should be turn_left")
     check(env1.action_list[2]["name"] == "turn_right", f"Action 2 should be turn_right")
@@ -156,9 +160,10 @@ def audit_action_space():
         failed_operator_params=["ball_1", "room_1"],
         target_predicates=set(),
     )
-    check(env2.action_space.n > 3, f"Symbolic env should have >3 actions, got {env2.action_space.n}")
+    action_space = cast(spaces.Discrete, env2.action_space)
+    check(action_space.n > 3, f"Symbolic env should have >3 actions, got {action_space.n}")
     symbolic_actions = [a for a in env2.action_list if a["type"] == "symbolic"]
-    print(f"  With symbolic: {env2.action_space.n} total ({len(symbolic_actions)} symbolic)")
+    print(f"  With symbolic: {action_space.n} total ({len(symbolic_actions)} symbolic)")
     for a in symbolic_actions:
         print(f"    {a['name']}({a['params']})")
 
@@ -194,7 +199,7 @@ def audit_reward_curtain():
     dist = env._get_distance_to_goal()
     print(f"  Distance to goal: {dist}")
     check(dist is not None, "Distance should not be None for curtain scenario")
-    check(dist > 0.0, f"Distance should be > 0, got {dist}")
+    check(cast(float, dist) > 0.0, f"Distance should be > 0, got {dist}")
 
     # Sparse reward: 0 initially
     reward, done = env._compute_reward()
@@ -203,6 +208,8 @@ def audit_reward_curtain():
     print(f"  Initial reward: {reward:.4f} (sparse)")
 
     # Now teleport robot to room_2 and check success
+    if env.world.robot_body is None:
+        raise ValueError("Robot body not initialized")
     env.world.robot_body.position = (5.0, 1.5)
     env.world.robot_body.angle = math.pi / 2  # facing up, should be facing "nothing"
     current2 = env._get_current_predicates()
@@ -238,7 +245,7 @@ def audit_reward_box():
     dist = env._get_distance_to_goal()
     print(f"  Distance to bin waypoint: {dist}")
     check(dist is not None, "Distance should not be None for box scenario")
-    check(dist > 0.0, f"Distance should be > 0, got {dist}")
+    check(cast(float, dist) > 0.0, f"Distance should be > 0, got {dist}")
 
     reward, done = env._compute_reward()
     print(f"  Initial reward: {reward:.4f}, done: {done}")
@@ -249,6 +256,8 @@ def audit_reward_box():
     check(mapped == "bin", f"bin_1 should map to 'bin', got '{mapped}'")
 
     # Check what happens when we get the robot close to and facing the bin
+    if env.world.robot_body is None:
+        raise ValueError("Robot body not initialized")
     env.world.robot_body.position = (6.1, 1.5)
     env.world.robot_body.angle = 0.0  # facing right toward bin at (6.5, 1.5)
     current = env._get_current_predicates()
@@ -277,11 +286,11 @@ def audit_reward_ball_obstacle():
 
     # Obstacle ball should exist
     check(env.world.obstacle_ball_body is not None, "Obstacle ball should exist")
-    ob_pos = tuple(env.world.obstacle_ball_body.position)
+    ob_pos = tuple(cast(Body, env.world.obstacle_ball_body).position)
     print(f"  Obstacle ball position: ({ob_pos[0]:.3f}, {ob_pos[1]:.3f})")
 
     # Task ball should also exist (in room 1)
-    task_pos = tuple(env.world.ball_body.position)
+    task_pos = tuple(cast(Body, env.world.ball_body).position)
     print(f"  Task ball position: ({task_pos[0]:.3f}, {task_pos[1]:.3f})")
 
     # Initial reward: sparse, so 0.0 (not facing bin yet)
@@ -290,6 +299,8 @@ def audit_reward_ball_obstacle():
     check(not done, "Should not be done initially")
 
     # Move robot close to bin and verify success triggers
+    if env.world.robot_body is None:
+        raise ValueError("Robot body not initialized")
     env.world.robot_body.position = (6.1, 1.5)
     env.world.robot_body.angle = 0.0  # facing toward bin
     current = env._get_current_predicates()
@@ -335,6 +346,8 @@ def audit_facing_consistency():
         (math.pi, None),  # facing left
         (math.pi/2, None),  # facing up
     ]:
+        if env.world.robot_body is None:
+            raise ValueError("Robot body not initialized")
         env.world.robot_body.angle = angle
         obs_new = env._get_observation()
         facing_new = obs_new[facing_start:facing_start+5]
@@ -352,6 +365,8 @@ def audit_room_boundary_edge_cases():
     world = SimWorld()
 
     # Exactly at doorway x=4.0 — could be in either room
+    if world.robot_body is None:
+        raise ValueError("Robot body not initialized")
     world.robot_body.position = (4.0, 1.5)
     r1 = world.query_at("robot_1", "room_1")
     r2 = world.query_at("robot_1", "room_2")

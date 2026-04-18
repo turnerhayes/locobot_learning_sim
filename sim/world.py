@@ -22,6 +22,7 @@ Units are meters. The robot is a differential-drive disc (radius ~0.17m, matchin
 import math
 import numpy as np
 import pymunk
+from pymunk.constraints import Constraint, PivotJoint, DampedRotarySpring
 from typing import Dict, List, Optional, Tuple, Set
 from dataclasses import dataclass, field
 from enum import Enum
@@ -130,8 +131,8 @@ class SimWorld:
         self.obstacle_ball_shape: Optional[pymunk.Shape] = None
         self.curtain_body: Optional[pymunk.Body] = None
         self.curtain_shape: Optional[pymunk.Shape] = None
-        self.curtain_joint: Optional[pymunk.Constraint] = None
-        self.curtain_spring: Optional[pymunk.Constraint] = None
+        self.curtain_joint: Optional[Constraint] = None
+        self.curtain_spring: Optional[Constraint] = None
 
         self.walls: List[pymunk.Shape] = []
 
@@ -292,13 +293,13 @@ class SimWorld:
         self.space.add(self.curtain_body, self.curtain_shape)
 
         # Pivot joint at the anchor point (top of curtain)
-        self.curtain_joint = pymunk.PivotJoint(
+        self.curtain_joint = PivotJoint(
             self.space.static_body, self.curtain_body, anchor
         )
         self.space.add(self.curtain_joint)
 
         # Spring that pulls curtain back to resting position (hanging straight down)
-        self.curtain_spring = pymunk.DampedRotarySpring(
+        self.curtain_spring = DampedRotarySpring(
             self.space.static_body, self.curtain_body,
             rest_angle=0.0,
             stiffness=self.config.curtain_spring_stiffness,
@@ -335,6 +336,8 @@ class SimWorld:
 
     def move_forward(self) -> None:
         """Apply forward velocity to the robot for one action step."""
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
         heading = self.robot_body.angle
         vx = self.config.linear_velocity * math.cos(heading)
         vy = self.config.linear_velocity * math.sin(heading)
@@ -344,12 +347,16 @@ class SimWorld:
 
     def turn_left(self) -> None:
         """Rotate the robot counter-clockwise for one action step."""
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
         delta = self.config.angular_velocity * self.config.action_duration
         self.robot_body.angle += delta
         self._step_physics_brief()
 
     def turn_right(self) -> None:
         """Rotate the robot clockwise for one action step."""
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
         delta = self.config.angular_velocity * self.config.action_duration
         self.robot_body.angle -= delta
         self._step_physics_brief()
@@ -360,6 +367,9 @@ class SimWorld:
         Returns True if successful (no obstacle blocking).
         This simulates the real robot's move_base navigation.
         """
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
+        
         waypoints = self._get_waypoints()
         if target_name not in waypoints:
             return False
@@ -380,6 +390,13 @@ class SimWorld:
         """
         Attempt to pick up the ball. Succeeds if robot is close and facing it.
         """
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
+        if self.ball_body is None:
+            raise ValueError("Ball body not initialized")
+        if self.ball_shape is None:
+            raise ValueError("Ball shape not initialized")
+        
         if self._robot_holding is not None:
             return False
         if self._ball_picked or self._ball_in_bin:
@@ -402,6 +419,9 @@ class SimWorld:
         Attempt to place the held object into the bin.
         Succeeds if robot is close to bin and facing it.
         """
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
+        
         if self._robot_holding is None:
             return False
 
@@ -421,6 +441,11 @@ class SimWorld:
 
     def query_at(self, obj: str, room: str) -> bool:
         """Check if an object is in a given room."""
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
+        if self.ball_body is None:
+            raise ValueError("Ball body not initialized")
+        
         from shapely.geometry import Point, Polygon
 
         if obj == "doorway_1":
@@ -488,6 +513,9 @@ class SimWorld:
           0.5 = curtain (semi-permeable, pushable)
           1.0 = occupied (wall, rigid obstacle)
         """
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
+
         grid = np.zeros((size, size), dtype=np.float32)
         robot_pos = self.robot_body.position
         robot_angle = self.robot_body.angle
@@ -528,6 +556,9 @@ class SimWorld:
 
     def get_relative_pose(self, target_name: str) -> Tuple[float, float]:
         """Get relative (x, y) position of a target w.r.t. the robot."""
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
+
         waypoints = self._get_waypoints()
         if target_name in waypoints:
             target_pos = waypoints[target_name][0]
@@ -541,14 +572,22 @@ class SimWorld:
 
     def get_robot_position(self) -> Tuple[float, float]:
         """Get robot position in world frame."""
-        return tuple(self.robot_body.position)
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
+
+        return (self.robot_body.position[0], self.robot_body.position[1])
 
     def get_robot_heading(self) -> float:
         """Get robot heading in radians."""
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
         return self.robot_body.angle
 
     def is_forward_obstructed(self) -> bool:
         """Check if moving forward would result in a collision."""
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
+
         heading = self.robot_body.angle
         probe_dist = ROBOT_RADIUS + 0.05
         probe_x = self.robot_body.position[0] + probe_dist * math.cos(heading)
@@ -556,7 +595,7 @@ class SimWorld:
 
         query = self.space.point_query_nearest(
             (probe_x, probe_y), ROBOT_RADIUS * 0.5,
-            pymunk.ShapeFilter(mask=CAT_WALL | CAT_OBJECT)
+            pymunk.ShapeFilter(mask=CAT_WALL | CAT_OBJECT | CAT_CURTAIN)
         )
         return query is not None and query.distance < 0.01
 
@@ -625,6 +664,9 @@ class SimWorld:
 
     def _is_facing_position(self, target_pos) -> bool:
         """Check if robot is roughly facing a given world position."""
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
+        
         robot_pos = self.robot_body.position
         heading = self.robot_body.angle
 
@@ -640,6 +682,9 @@ class SimWorld:
         For bin_1, also checks that the path is not obstructed (matching
         real robot's bin_visibility_checker).
         """
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
+        
         pos = self._get_object_position(obj)
         if pos is None:
             return False
@@ -670,8 +715,10 @@ class SimWorld:
         """Get the world position of a named object."""
         if obj in ("ball_1", "can_1", "generic_object"):
             if self._ball_picked or self._ball_in_bin:
-                return None
-            return tuple(self.ball_body.position)
+                    return None
+            if self.ball_body is None:
+                raise ValueError("Ball body not initialized")
+            return (self.ball_body.position[0], self.ball_body.position[1])
         elif obj == "bin_1":
             return self.config.bin_position
         elif obj == "doorway_1":
@@ -694,6 +741,9 @@ class SimWorld:
 
     def get_state_summary(self) -> dict:
         """Return a human-readable state summary for debugging."""
+        if self.robot_body is None:
+            raise ValueError("Robot body not initialized")
+
         robot_pos = self.robot_body.position
         heading_deg = math.degrees(self.robot_body.angle)
 
@@ -707,6 +757,9 @@ class SimWorld:
         }
 
         if not self._ball_picked and not self._ball_in_bin:
+            if self.ball_body is None:
+                raise ValueError("Ball body not initialized")
+
             ball_pos = self.ball_body.position
             state["ball_position"] = (round(ball_pos[0], 3), round(ball_pos[1], 3))
 

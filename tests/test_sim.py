@@ -69,6 +69,8 @@ def test_wall_collision():
     """Test that the robot can't walk through walls."""
     world = SimWorld()
 
+    if world.robot_body is None:
+        raise ValueError("Robot body not initialized")
     # Walk robot into left wall (heading = pi = left)
     world.robot_body.angle = math.pi  # face left
     initial_x = world.get_robot_position()[0]
@@ -120,6 +122,8 @@ def test_facing():
     is_facing = world.query_facing("ball_1")
     print(f"  Robot at (1.0, 1.5) heading=0°, ball at (1.5, 1.5): facing={is_facing}")
 
+    if world.robot_body is None:
+        raise ValueError("Robot body not initialized")
     # Face completely away from ball
     world.robot_body.angle = math.pi  # face left
     is_facing_away = world.query_facing("ball_1")
@@ -201,6 +205,8 @@ def test_curtain_novelty():
 
     # Navigate robot to doorway
     world.approach_waypoint("atdoor")
+    if world.robot_body is None:
+        raise ValueError("Robot body not initialized")
     world.robot_body.angle = 0.0  # face right (toward doorway/room2)
 
     # Try to push through
@@ -230,6 +236,8 @@ def test_box_novelty():
 
     # Navigate to room 2 near the box
     world.approach_waypoint("postdoor")
+    if world.robot_body is None:
+        raise ValueError("Robot body not initialized")
     world.robot_body.angle = 0.0  # face right (toward box/bin)
 
     # Push the box — need enough steps to cross room and push
@@ -265,6 +273,8 @@ def test_ball_obstacle_novelty():
     assert final_pos[0] > initial_pos[0], "Obstacle ball should have moved"
 
     # Task ball should still be in room 1 (untouched)
+    if world.ball_body is None:
+        raise ValueError("Task ball body not initialized")
     task_ball_pos = tuple(world.ball_body.position)
     print(f"  Task ball still at: ({task_ball_pos[0]:.3f}, {task_ball_pos[1]:.3f})")
     assert task_ball_pos[0] < world.config.room_width, "Task ball should still be in room 1"
@@ -317,12 +327,14 @@ def test_gymnasium_env_curtain():
     # First approach the doorway
     world = env.world
     world.approach_waypoint("atdoor")
+    if world.robot_body is None:
+        raise ValueError("Robot body not initialized")
     world.robot_body.angle = 0.0
 
     # Now push through curtain
     success = False
     for step in range(60):
-        obs, reward, terminated, truncated, info = env.step(0)  # move_forward
+        _, reward, terminated, _, _ = env.step(0)  # move_forward
         if terminated:
             success = True
             print(f"  Reached room_2 at step {step}! Reward: {reward:.3f}")

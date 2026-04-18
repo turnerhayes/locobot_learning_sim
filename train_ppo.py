@@ -14,17 +14,18 @@ Each novelty scenario mirrors the real robot's HybridAgent flow:
   4. PPO learns a primitive policy to reach the plannable state
 """
 
+from typing import cast, Tuple, Dict
 import argparse
-import math
 import os
 import sys
-import time
 import numpy as np
+from gymnasium.spaces import Discrete
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from sim.world import WorldConfig, NoveltyType
 from sim.env import RecycleBotSimEnv
+
 
 # ============================================================
 # Novelty Scenario Definitions
@@ -121,11 +122,11 @@ class PPOTrainer:
         self.buffer_rewards = []
         self.buffer_dones = []
 
-    def select_action(self, state):
+    def select_action(self, state) -> Tuple[int, float]:
         with torch.no_grad():
             state_t = torch.FloatTensor(state).unsqueeze(0).to(device)
             action, logprob = self.policy.act(state_t)
-        return action, logprob
+        return cast(int, action), cast(float, logprob)
 
     def store(self, state, action, logprob, reward, done):
         self.buffer_states.append(state)
@@ -352,8 +353,9 @@ def train(scenario_name: str, num_episodes: int, render: bool = False,
         world_config=world_config,
     )
 
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.n
+    action_space = cast(Discrete, env.action_space)
+    state_dim = cast(Tuple[int, ...], env.observation_space.shape)[0]
+    action_dim = action_space.n
     print(f"State dim: {state_dim}, Action dim: {action_dim}")
     print(f"Actions: {[a['name'] for a in env.action_list]}")
 
@@ -447,7 +449,7 @@ def train(scenario_name: str, num_episodes: int, render: bool = False,
 
             if wandb_run is not None:
                 import wandb
-                log_data = {
+                log_data: Dict = {
                     "eval/success_rate": eval_sr,
                     "eval/avg_reward": eval_reward,
                     "eval/avg_steps": eval_steps,

@@ -7,16 +7,17 @@ Usage:
   python evaluate.py --novelty box --policy results/box_policy.pth --episodes 50 --render
 """
 
+from typing import cast, Tuple
 import argparse
 import os
 import sys
 import time
-import math
+from gymnasium.spaces import Discrete
 import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from sim.world import WorldConfig, NoveltyType
+from sim.world import WorldConfig
 from sim.env import RecycleBotSimEnv
 from train_ppo import SCENARIOS, PPOTrainer
 
@@ -58,8 +59,9 @@ def evaluate(
         world_config=world_config,
     )
 
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.n
+    state_dim = cast(Tuple[int, ...], env.observation_space.shape)[0]
+    action_space = cast(Discrete, env.action_space)
+    action_dim = action_space.n
 
     # Load policy
     ppo = PPOTrainer(state_dim, action_dim)
